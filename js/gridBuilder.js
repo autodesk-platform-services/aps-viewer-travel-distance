@@ -7,7 +7,8 @@
 //        and blocked if a triangle of any other visible element intersects its obstacle box
 //        (starting just above the walking surface).
 //  - 2D: line segments, arcs and filled triangles of the sheet are tested against the rectangles.
-// Doors are always passable; rooms, annotations, grids, ... never block.
+// Doors are always passable; rooms, annotations, grids, ... never block. In 2D, text, tags, detail
+// items and elements without a resolved category never block either.
 (function (global) {
   'use strict';
 
@@ -16,8 +17,10 @@
 
   // Built-in categories that never block a path (not user-configurable).
   const IGNORED_3D = ['lines', 'levels', 'grids', 'mass', 'areas', 'spaces', 'rooms'];
-  const IGNORED_2D = ['tags', 'text', 'dimensions', 'grids', 'levels', 'section', 'elevation', 'callout',
-    'reference', 'spot', 'matchline', 'scope box', 'annotation', 'rooms', 'areas'];
+  const IGNORED_2D = ['tag', 'text', 'note', 'label', 'detail', 'lines', 'region', 'insulation', 'revision',
+    'keynote', 'symbol', 'break', 'legend', 'title', 'view', 'raster', 'image', 'schedule',
+    'dimensions', 'grids', 'levels', 'section', 'elevation', 'callout', 'reference', 'spot', 'matchline',
+    'scope box', 'annotation', 'rooms', 'areas'];
   const FLOOR_OFFSET_M = 0.02; // obstacle box starts this far above the walking surface
   const BELOW_FLOOR_M = 0.15;  // walkable column box starts this far below the walking surface
 
@@ -123,15 +126,22 @@
         progress(0, `Reading categories of ${others.length} elements...`);
         const categories = await getCategories(model, others);
         const roleOf = new Map();
-        const role = (raw) => {
-          const id = model.remapDbIdFor2D(raw);
+        const roleOfId = (id) => {
           if (!roleOf.has(id)) {
             const cat = categories.get(id);
+            // Ignored categories are tested before doors so "Door Tags" are not treated as doors.
             roleOf.set(id, id <= 0 ? null : o.walkableSet.has(id) ? 'walk'
-              : matchesAny(cat, ['door']) ? 'door' : matchesAny(cat, IGNORED_2D) ? null : 'block');
+              : !cat || matchesAny(cat, IGNORED_2D) ? null : matchesAny(cat, ['door']) ? 'door' : 'block');
           }
           return roleOf.get(id);
         };
+        const role = (raw) => roleOfId(model.remapDbIdFor2D(raw));
+        const summary = {};
+        others.forEach((id) => {
+          const key = `${categories.get(id) || '(no category)'} -> ${roleOfId(id) || 'ignored'}`;
+          summary[key] = (summary[key] || 0) + 1;
+        });
+        console.debug('Egress 2D category roles:', summary);
         // Pass B: test every primitive against the grid rectangles.
         for (let f = 0; f < fragCount; f++) {
           let current = null;
@@ -166,7 +176,7 @@
         for (let k = 0; k < candidates.length; k++) {
           const c = candidates[k];
           const cat = categories.get(c.dbId);
-          const kind = c.selected ? 'walk' : matchesAny(cat, ['door']) ? 'door' : matchesAny(cat, IGNORED_3D) ? null : 'block';
+          const kind = c.selected ? 'walk' : matchesAny(cat, IGNORED_3D) ? null : matchesAny(cat, ['door']) ? 'door' : 'block';
           if (kind) {
             const band = kind === 'walk' ? walkBand : blockBand;
             const m = marks[kind];

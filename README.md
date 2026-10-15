@@ -43,6 +43,10 @@ model is the Revit `rac_basic_sample_project`. Use the dropdown in the navbar to
    *Pick start*. Then click *Compute*.
    - Without a start point, the sample searches for the **most remote point** from the nearest exit
      (IBC 1017.3).
+   - *Central Dijkstra* uses the path counting method from Autodesk Research's
+     [*Path Counting for Grid-Based Navigation*](https://www.research.autodesk.com/publications/path-counting-for-grid-based-navigation/)
+     to get a straighter, more direct grid path than plain A* or Dijkstra. The default is Theta*,
+     so select it in the *Algorithm* list.
    - *Compare all* runs A*, Dijkstra, Central Dijkstra and Theta* together.
    - *Animate* replays the walk along the path.
 
@@ -87,7 +91,7 @@ Based on the classic game AI options (see the
 | **A\*** | 8-connected grid with an octile heuristic (admissible). Finds the shortest grid path from the start to the nearest exit. |
 | **Dijkstra** | Multi-source from all exits. One pass gives the distance from *every* cell to its nearest exit (a "flow field"). The maximum is the most remote point, which can be shown as a heatmap against the limit. |
 | **Theta\*** | Any-angle variant of A*. It links a node to its grandparent when there's line of sight, so the path approximates the "natural and unobstructed path" (taut string) that the code requires. |
-| **Central Dijkstra** | From *Path Counting for Grid-Based Navigation* (Goldstein et al., Autodesk Research, JAIR 74, 2022). It reuses the Dijkstra field (integer move costs 408/577) to count, in log2 space, the shortest grid paths through each cell. It then follows the cells with the highest traversal count (paths from the start × paths to the exit). The result is the most "central" shortest grid path, which hugs sightlines and smooths into a near-taut path. |
+| **Central Dijkstra** | From [*Path Counting for Grid-Based Navigation*](https://www.research.autodesk.com/publications/path-counting-for-grid-based-navigation/) (Goldstein et al., Autodesk Research, JAIR 74, 2022). It reuses the Dijkstra field (integer move costs 408/577) to count, in log2 space, the shortest grid paths through each cell. It then follows the cells with the highest traversal count (paths from the start × paths to the exit). The result is the most "central" shortest grid path, which hugs sightlines and smooths into a near-taut path. |
 | Smoothing | Line-of-sight string pulling, applied to the grid paths (A*, Dijkstra, Central) for a fair comparison. |
 
 Grid paths on 8 directions overestimate real distances by up to ~8%. Theta* and smoothing remove most
