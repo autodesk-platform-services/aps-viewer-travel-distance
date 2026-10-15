@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Autodesk Platform Services Egress Travel Distance Sample</title>
+  <meta charset="utf-8" />
+  <link rel="shortcut icon" href="https://github.com/Autodesk-Forge/learn.forge.viewmodels/raw/master/img/favicon.ico">
+  <!-- Common packages: Bootstrap -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css">
+  <!-- Autodesk Platform Services Viewer files -->
+  <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css"
+    type="text/css">
+  <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+  <!-- this project files -->
+  <script src="./js/ibcEgress.js"></script>
+  <script src="./js/pathfinding.js"></script>
+  <script src="./js/geometryGrid.js"></script>
+  <script src="./js/gridBuilder.js"></script>
+  <script src="./TravelDistanceExtension.js"></script>
+  <script src="./MultipleSelectionExtension.js"></script>
+  <style type="text/css">
+    html,
+    body {
+      min-height: 100%;
+      height: 100%;
+    }
+
+    body {
+      padding-top: 5rem;
+      /*space for the top nav bar*/
+    }
+
+    #apsViewer {
+      width: 100%;
+      height: calc(100vh - 5rem);
+      position: relative;
+    }
+
+    /* Navbar */
+    .navbar>.container {
+      width: 100%;
+    }
+
+    .navbar-itemr {
+      position: relative;
+      float: right;
+      margin-bottom: 0;
+    }
+
+    /* Egress panel */
+    .egress-panel .egress-content {
+      height: calc(100% - 50px);
+      overflow-y: auto;
+      padding: 8px 12px;
+      background: #fff;
+      color: #333;
+      font-size: 12px;
+    }
+
+    .egress-panel summary {
+      font-weight: bold;
+      cursor: pointer;
+      margin: 6px 0;
+    }
+
+    .egress-panel details details summary {
+      font-weight: normal;
+    }
+
+    .egress-panel label {
+      font-size: 11px;
+    }
+
+    .egress-panel .egress-table input {
+      height: 24px;
+      padding: 2px 4px;
+    }
+
+    .egress-panel .egress-buttons {
+      margin: 4px 0 8px 0;
+    }
+
+    .egress-panel .egress-modifier {
+      margin-bottom: 8px;
+    }
+
+    .egress-panel .egress-limit {
+      margin: 6px 0;
+      padding: 6px;
+      background: #f5f5f5;
+      border-left: 3px solid #1e88e5;
+    }
+
+    .egress-panel .egress-progress {
+      height: 6px;
+      margin: 4px 0;
+    }
+
+    .egress-panel .egress-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+
+<body
+  onload="initAPSViewer('dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6anBvbS1zYW1wbGVzLWNsaWVudC9yYWNiYXNpY3NhbXBsZXByb2plY3QucnZ0')">
+  <nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+      <a href="http://developer.autodesk.com" class="navbar-brand" href="#"><img alt="Autodesk Platform Services"
+          src="https://cdn.autodesk.io/logo/black/stacked.png" height="20"></a>
+      <div class="collapse navbar-collapse">
+        <form class="navbar-form navbar-left">
+          <select id="viewables" class="form-control"></select>
+        </form>
+        <div class="navbar-itemr navbar-form"><a class="form-control"
+            href="https://github.com/autodesk-platform-services/aps-viewer-model-compliance">Github</a></div>
+      </div>
+    </div>
+  </nav>
+  <!-- End of navbar -->
+  <div class="container-fluid fill">
+    <div class="row fill">
+      <div id="apsViewer"></div>
+    </div>
+  </div>
+</body>
+
+
+<script>
+
+  let viewer = null;
+  let _access_token = null;
+
+  async function getToken() {
+    await fetch('https://lowlblo75l.execute-api.us-east-1.amazonaws.com/default/GetTokenWithAHub').then(response => {
+      return response.json();
+    }).then(data => {
+      _access_token = data.access_token;
+    });
+  }
+
+  async function initAPSViewer(urn) {
+
+    await getToken();
+
+    const options = {
+      env: 'AutodeskProduction',
+      accessToken: _access_token,
+      isAEC: true
+    };
+
+    Autodesk.Viewing.Initializer(options, () => {
+
+      const div = document.getElementById('apsViewer');
+
+      const config = { extensions: ['TravelDistanceExtension', 'MultipleSelectionExtension'] };
+
+      viewer = new Autodesk.Viewing.Private.GuiViewer3D(div, config);
+      viewer.start();
+      viewer.setTheme('light-theme');
+      Autodesk.Viewing.Document.load(`urn:${urn}`, async (doc) => {
+        // AEC data: levels (3D Levels extension) and viewports (2D drawing scale).
+        await doc.downloadAecModelData();
+        const viewables = doc.getRoot().search({ type: 'geometry' });
+        const select = document.getElementById('viewables');
+        select.innerHTML = viewables.map((v, i) => `<option value="${i}">${v.is2D() ? '2D' : '3D'} - ${v.name()}</option>`).join('');
+        select.onchange = () => loadViewable(doc, viewables[select.value]);
+        const defaultIndex = Math.max(0, viewables.indexOf(doc.getRoot().getDefaultGeometry()));
+        select.value = defaultIndex;
+        loadViewable(doc, viewables[defaultIndex]);
+      });
+    });
+  }
+
+  async function loadViewable(doc, node) {
+    await viewer.loadDocumentNode(doc, node);
+    await viewer.waitForLoadDone();
+    if (!node.is2D()) {
+      // Isolate one level in 3D to select its floors/rooms/stairs as the walkable area.
+      await viewer.loadExtension('Autodesk.AEC.LevelsExtension');
+    }
+    viewer.getExtension('TravelDistanceExtension').onModelChanged();
+  }
+
+</script>
+
+</html>
